@@ -5,26 +5,33 @@ __metaclass__ = type
 import abc
 import atexit
 import datetime
-import json
 import time
 import os
-import platform
-import random
 import re
 import tempfile
 
 from .. import types as t
 
+from ..encoding import (
+    to_bytes,
+)
+
+from ..io import (
+    read_text_file,
+)
+
 from ..util import (
     ApplicationError,
     display,
-    is_shippable,
     import_plugins,
     load_plugins,
     ABC,
-    to_bytes,
-    make_dirs,
     ANSIBLE_TEST_CONFIG_ROOT,
+)
+
+from ..util_common import (
+    write_json_test_results,
+    ResultType,
 )
 
 from ..target import (
@@ -33,6 +40,10 @@ from ..target import (
 
 from ..config import (
     IntegrationConfig,
+)
+
+from ..ci import (
+    get_ci_provider,
 )
 
 from ..data import (
@@ -158,17 +169,14 @@ def cloud_init(args, targets):
         )
 
     if not args.explain and results:
-        results_path = os.path.join(data_context().results, 'data', '%s-%s.json' % (
-            args.command, re.sub(r'[^0-9]', '-', str(datetime.datetime.utcnow().replace(microsecond=0)))))
+        result_name = '%s-%s.json' % (
+            args.command, re.sub(r'[^0-9]', '-', str(datetime.datetime.utcnow().replace(microsecond=0))))
 
         data = dict(
             clouds=results,
         )
 
-        make_dirs(os.path.dirname(results_path))
-
-        with open(results_path, 'w') as results_fd:
-            results_fd.write(json.dumps(data, sort_keys=True, indent=4))
+        write_json_test_results(ResultType.DATA, result_name, data)
 
 
 class CloudBase(ABC):
@@ -190,12 +198,7 @@ class CloudBase(ABC):
         def config_callback(files):  # type: (t.List[t.Tuple[str, str]]) -> None
             """Add the config file to the payload file list."""
             if self._get_cloud_config(self._CONFIG_PATH, ''):
-                if data_context().content.collection:
-                    working_path = data_context().content.collection.directory
-                else:
-                    working_path = ''
-
-                pair = (self.config_path, os.path.join(working_path, os.path.relpath(self.config_path, data_context().content.root)))
+                pair = (self.config_path, os.path.relpath(self.config_path, data_context().content.root))
 
                 if pair not in files:
                     display.info('Including %s config: %s -> %s' % (self.platform, pair[0], pair[1]), verbosity=3)
@@ -280,8 +283,6 @@ class CloudBase(ABC):
 
 class CloudProvider(CloudBase):
     """Base class for cloud provider plugins. Sets up cloud resources before delegation."""
-    TEST_DIR = 'test/integration'
-
     def __init__(self, args, config_extension='.ini'):
         """
         :type args: IntegrationConfig
@@ -289,9 +290,10 @@ class CloudProvider(CloudBase):
         """
         super(CloudProvider, self).__init__(args)
 
+        self.ci_provider = get_ci_provider()
         self.remove_config = False
         self.config_static_name = 'cloud-config-%s%s' % (self.platform, config_extension)
-        self.config_static_path = os.path.join(self.TEST_DIR, self.config_static_name)
+        self.config_static_path = os.path.join(data_context().content.integration_path, self.config_static_name)
         self.config_template_path = os.path.join(ANSIBLE_TEST_CONFIG_ROOT, '%s.template' % self.config_static_name)
         self.config_extension = config_extension
 
@@ -310,18 +312,16 @@ class CloudProvider(CloudBase):
 
     def setup(self):
         """Setup the cloud resource before delegation and register a cleanup callback."""
-        self.resource_prefix = self._generate_resource_prefix()
+        self.resource_prefix = self.ci_provider.generate_resource_prefix()
 
         atexit.register(self.cleanup)
 
-    # pylint: disable=locally-disabled, no-self-use
     def get_remote_ssh_options(self):
         """Get any additional options needed when delegating tests to a remote instance via SSH.
         :rtype: list[str]
         """
         return []
 
-    # pylint: disable=locally-disabled, no-self-use
     def get_docker_run_options(self):
         """Get any additional options needed when delegating tests to a docker container.
         :rtype: list[str]
@@ -354,8 +354,8 @@ class CloudProvider(CloudBase):
         """
         prefix = '%s-' % os.path.splitext(os.path.basename(self.config_static_path))[0]
 
-        with tempfile.NamedTemporaryFile(dir=self.TEST_DIR, prefix=prefix, suffix=self.config_extension, delete=False) as config_fd:
-            filename = os.path.join(self.TEST_DIR, os.path.basename(config_fd.name))
+        with tempfile.NamedTemporaryFile(dir=data_context().content.integration_path, prefix=prefix, suffix=self.config_extension, delete=False) as config_fd:
+            filename = os.path.join(data_context().content.integration_path, os.path.basename(config_fd.name))
 
             self.config_path = filename
             self.remove_config = True
@@ -369,11 +369,10 @@ class CloudProvider(CloudBase):
         """
         :rtype: str
         """
-        with open(self.config_template_path, 'r') as template_fd:
-            lines = template_fd.read().splitlines()
-            lines = [l for l in lines if not l.startswith('#')]
-            config = '\n'.join(lines).strip() + '\n'
-            return config
+        lines = read_text_file(self.config_template_path).splitlines()
+        lines = [line for line in lines if not line.startswith('#')]
+        config = '\n'.join(lines).strip() + '\n'
+        return config
 
     @staticmethod
     def _populate_config_template(template, values):
@@ -387,21 +386,6 @@ class CloudProvider(CloudBase):
             template = template.replace('@%s' % key, value)
 
         return template
-
-    @staticmethod
-    def _generate_resource_prefix():
-        """
-        :rtype: str
-        """
-        if is_shippable():
-            return 'shippable-%s-%s' % (
-                os.environ['SHIPPABLE_BUILD_NUMBER'],
-                os.environ['SHIPPABLE_JOB_NUMBER'],
-            )
-
-        node = re.sub(r'[^a-zA-Z0-9]+', '-', platform.node().split('.')[0]).lower()
-
-        return 'ansible-test-%s-%d' % (node, random.randint(10000000, 99999999))
 
 
 class CloudEnvironment(CloudBase):

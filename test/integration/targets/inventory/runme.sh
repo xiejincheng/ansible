@@ -21,9 +21,19 @@ if [ "$?" != "1" ]; then
     exit 1
 fi
 
+# Ensure that non-existing limit file causes failure with rc 1
+ansible-playbook -i ../../inventory --limit @foo playbook.yml
+if [ "$?" != "1" ]; then
+    echo "Non-existing limit file should cause failure"
+    exit 1
+fi
+
 # Ensure that non-matching limit causes failure with rc 1
 ansible-playbook -i ../../inventory --limit @"${empty_limit_file}" playbook.yml
 
 ansible-playbook -i ../../inventory "$@" strategy.yml
 ANSIBLE_TRANSFORM_INVALID_GROUP_CHARS=always ansible-playbook -i ../../inventory "$@" strategy.yml
 ANSIBLE_TRANSFORM_INVALID_GROUP_CHARS=never ansible-playbook -i ../../inventory "$@" strategy.yml
+
+# test extra vars
+ansible-inventory -i testhost, -i ./extra_vars_constructed.yml --list -e 'from_extras=hey ' "$@"|grep '"example": "hellohey"'

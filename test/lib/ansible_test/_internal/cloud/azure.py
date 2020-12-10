@@ -4,10 +4,13 @@ __metaclass__ = type
 
 import os
 
+from ..io import (
+    read_text_file,
+)
+
 from ..util import (
     ApplicationError,
     display,
-    is_shippable,
     ConfigParser,
 )
 
@@ -51,13 +54,10 @@ class AzureCloudProvider(CloudProvider):
 
         aci = self._create_ansible_core_ci()
 
-        if os.path.isfile(aci.ci_key):
+        if aci.available:
             return
 
         if os.path.isfile(self.SHERLOCK_CONFIG_PATH):
-            return
-
-        if is_shippable():
             return
 
         super(AzureCloudProvider, self).filter(targets, exclude)
@@ -86,8 +86,7 @@ class AzureCloudProvider(CloudProvider):
         response = {}
 
         if os.path.isfile(self.SHERLOCK_CONFIG_PATH):
-            with open(self.SHERLOCK_CONFIG_PATH, 'r') as sherlock_fd:
-                sherlock_uri = sherlock_fd.readline().strip() + '&rgcount=2'
+            sherlock_uri = read_text_file(self.SHERLOCK_CONFIG_PATH).splitlines()[0].strip() + '&rgcount=2'
 
             parts = urlparse(sherlock_uri)
             query_string = parse_qs(parts.query)
@@ -125,6 +124,8 @@ class AzureCloudProvider(CloudProvider):
                 RESOURCE_GROUP_SECONDARY=response['resourceGroupNames'][1],
             )
 
+            display.sensitive.add(values['AZURE_SECRET'])
+
             config = '\n'.join('%s: %s' % (key, values[key]) for key in sorted(values))
 
             config = '[default]\n' + config
@@ -145,6 +146,9 @@ class AzureCloudEnvironment(CloudEnvironment):
         :rtype: CloudEnvironmentConfig
         """
         env_vars = get_config(self.config_path)
+
+        display.sensitive.add(env_vars.get('AZURE_SECRET'))
+        display.sensitive.add(env_vars.get('AZURE_PASSWORD'))
 
         ansible_vars = dict(
             resource_prefix=self.resource_prefix,

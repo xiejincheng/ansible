@@ -21,6 +21,7 @@ __metaclass__ = type
 
 import os
 
+from ansible import constants as C
 from ansible.errors import AnsibleError
 from ansible.module_utils._text import to_text
 from ansible.playbook.task_include import TaskInclude
@@ -51,6 +52,7 @@ class IncludedFile:
         return (other._filename == self._filename and
                 other._args == self._args and
                 other._vars == self._vars and
+                other._task._uuid == self._task._uuid and
                 other._task._parent._uuid == self._task._parent._uuid)
 
     def __repr__(self):
@@ -66,7 +68,7 @@ class IncludedFile:
             original_host = res._host
             original_task = res._task
 
-            if original_task.action in ('include', 'include_tasks', 'include_role'):
+            if original_task.action in C._ACTION_ALL_INCLUDES:
                 if original_task.loop:
                     if 'results' not in res._result:
                         continue
@@ -95,6 +97,8 @@ class IncludedFile:
                         task_vars[index_var] = special_vars[index_var] = include_result[index_var]
                     if '_ansible_item_label' in include_result:
                         task_vars['_ansible_item_label'] = special_vars['_ansible_item_label'] = include_result['_ansible_item_label']
+                    if 'ansible_loop' in include_result:
+                        task_vars['ansible_loop'] = special_vars['ansible_loop'] = include_result['ansible_loop']
                     if original_task.no_log and '_ansible_no_log' not in include_args:
                         task_vars['_ansible_no_log'] = special_vars['_ansible_no_log'] = original_task.no_log
 
@@ -108,7 +112,7 @@ class IncludedFile:
 
                     templar = Templar(loader=loader, variables=task_vars)
 
-                    if original_task.action in ('include', 'include_tasks'):
+                    if original_task.action in C._ACTION_ALL_INCLUDE_TASKS:
                         include_file = None
                         if original_task:
                             if original_task.static:

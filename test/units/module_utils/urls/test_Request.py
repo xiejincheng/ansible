@@ -415,7 +415,7 @@ def test_Request_open_last_mod(urlopen_mock, install_opener_mock):
     args = urlopen_mock.call_args[0]
     req = args[0]
 
-    assert req.headers.get('If-modified-since') == now.strftime('%a, %d %b %Y %H:%M:%S -0000')
+    assert req.headers.get('If-modified-since') == now.strftime('%a, %d %b %Y %H:%M:%S GMT')
 
 
 def test_Request_open_headers_not_dict(urlopen_mock, install_opener_mock):
@@ -453,4 +453,4 @@ def test_open_url(urlopen_mock, install_opener_mock, mocker):
                                      url_username=None, url_password=None, http_agent=None,
                                      force_basic_auth=False, follow_redirects='urllib2',
                                      client_cert=None, client_key=None, cookies=None, use_gssapi=False,
-                                     unix_socket=None, ca_path=None)
+                                     unix_socket=None, ca_path=None, unredirected_headers=None)

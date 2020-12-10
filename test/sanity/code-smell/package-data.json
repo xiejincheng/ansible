@@ -1,8 +1,6 @@
 {
+    "intercept": true,
     "disabled": true,
     "all_targets": true,
-    "prefixes": [
-        "lib/ansible/"
-    ],
     "output": "path-message"
 }

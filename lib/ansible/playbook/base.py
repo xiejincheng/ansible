@@ -254,7 +254,8 @@ class FieldAttributeBase(with_metaclass(BaseMeta, object)):
     def get_variable_manager(self):
         return self._variable_manager
 
-    def _validate_debugger(self, attr, name, value):
+    def _post_validate_debugger(self, attr, value, templar):
+        value = templar.template(value)
         valid_values = frozenset(('always', 'on_failed', 'on_unreachable', 'on_skipped', 'never'))
         if value and isinstance(value, string_types) and value not in valid_values:
             raise AnsibleParserError("'%s' is not a valid value for debugger. Must be one of %s" % (value, ', '.join(valid_values)), obj=self.get_ds())
@@ -342,7 +343,7 @@ class FieldAttributeBase(with_metaclass(BaseMeta, object)):
         elif attribute.isa == 'float':
             value = float(value)
         elif attribute.isa == 'bool':
-            value = boolean(value, strict=False)
+            value = boolean(value, strict=True)
         elif attribute.isa == 'percent':
             # special value, which may be an integer or float
             # with an optional '%' at the end
@@ -507,8 +508,8 @@ class FieldAttributeBase(with_metaclass(BaseMeta, object)):
         # Due to where _extend_value may run for some attributes
         # it is possible to end up with Sentinel in the list of values
         # ensure we strip them
-        value[:] = [v for v in value if v is not Sentinel]
-        new_value[:] = [v for v in new_value if v is not Sentinel]
+        value = [v for v in value if v is not Sentinel]
+        new_value = [v for v in new_value if v is not Sentinel]
 
         if prepend:
             combined = new_value + value
@@ -612,6 +613,8 @@ class Base(FieldAttributeBase):
     _check_mode = FieldAttribute(isa='bool', default=context.cliargs_deferred_get('check'))
     _diff = FieldAttribute(isa='bool', default=context.cliargs_deferred_get('diff'))
     _any_errors_fatal = FieldAttribute(isa='bool', default=C.ANY_ERRORS_FATAL)
+    _throttle = FieldAttribute(isa='int', default=0)
+    _timeout = FieldAttribute(isa='int', default=C.TASK_TIMEOUT)
 
     # explicitly invoke a debugger on tasks
     _debugger = FieldAttribute(isa='string')

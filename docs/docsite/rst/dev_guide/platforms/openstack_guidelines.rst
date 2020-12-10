@@ -3,10 +3,7 @@
 OpenStack Ansible Modules
 =========================
 
-These are a set of modules for interacting with OpenStack as either an admin
-or an end user. If the module does not begin with ``os_``, it's either deprecated
-or soon to be. This document serves as developer coding guidelines for
-modules intended to be here.
+The OpenStack collection (on `Galaxy <https://galaxy.ansible.com/openstack/cloud>`_, source code `repository <https://opendev.org/openstack/ansible-collections-openstack.git>`_) contains modules for interacting with OpenStack as either an admin or an end user. If the module does not begin with ``os_``, it is either deprecated or soon to be deprecated. This document serves as developer coding guidelines for modules in this collection.
 
 .. contents::
    :local:
@@ -46,7 +43,7 @@ Libraries
   standard input such as auth and ssl support.
 * All modules should include ``extends_documentation_fragment: openstack``.
 * All complex cloud interaction or interoperability code should be housed in
-  the `openstacksdk <http://git.openstack.org/cgit/openstack/openstacksdk>`_
+  the `openstacksdk <https://git.openstack.org/cgit/openstack/openstacksdk>`_
   library.
 * All OpenStack API interactions should happen via the openstacksdk and not via
   OpenStack Client libraries. The OpenStack Client libraries do no have end

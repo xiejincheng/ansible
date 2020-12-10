@@ -190,7 +190,7 @@ examples to get you started:
     DOCKER_DEFAULT_IP=192.0.2.5 ./docker.py --pretty
 
     # Run as input to a playbook:
-    ansible-playbook -i ~/projects/ansible/contrib/inventory/docker.py docker_inventory_test.yml
+    ansible-playbook -i ./docker.py docker_inventory_test.yml
 
     # Simple playbook to invoke with the above example:
 
@@ -198,12 +198,13 @@ examples to get you started:
           hosts: all
           gather_facts: no
           tasks:
-            - debug: msg="Container - {{ inventory_hostname }}"
+            - debug:
+                msg: "Container - {{ inventory_hostname }}"
 
 Configuration
 .............
 You can control the behavior of the inventory script by defining environment variables, or
-creating a docker.yml file (sample provided in ansible/contrib/inventory). The order of precedence is the docker.yml
+creating a docker.yml file (sample provided in https://raw.githubusercontent.com/ansible-collections/community.general/main/scripts/inventory/docker.py). The order of precedence is the docker.yml
 file and then environment variables.
 
 
@@ -261,7 +262,7 @@ Configuration File
 Using a configuration file provides a means for defining a set of Docker APIs from which to build an inventory.
 
 The default name of the file is derived from the name of the inventory script. By default the script will look for
-basename of the script (i.e. docker) with an extension of '.yml'.
+basename of the script (in other words, docker) with an extension of '.yml'.
 
 You can also override the default name of the script by defining DOCKER_CONFIG_FILE in the environment.
 

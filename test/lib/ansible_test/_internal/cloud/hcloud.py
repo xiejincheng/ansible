@@ -6,7 +6,6 @@ import os
 
 from ..util import (
     display,
-    is_shippable,
     ConfigParser,
 )
 
@@ -42,10 +41,7 @@ class HcloudCloudProvider(CloudProvider):
 
         aci = self._create_ansible_core_ci()
 
-        if os.path.isfile(aci.ci_key):
-            return
-
-        if is_shippable():
+        if aci.available:
             return
 
         super(HcloudCloudProvider, self).filter(targets, exclude)
@@ -77,6 +73,8 @@ class HcloudCloudProvider(CloudProvider):
                 TOKEN=token,
             )
 
+            display.sensitive.add(values['TOKEN'])
+
             config = self._populate_config_template(config, values)
 
         self._write_config(config)
@@ -103,6 +101,8 @@ class HcloudCloudEnvironment(CloudEnvironment):
         env_vars = dict(
             HCLOUD_TOKEN=parser.get('default', 'hcloud_api_token'),
         )
+
+        display.sensitive.add(env_vars['HCLOUD_TOKEN'])
 
         ansible_vars = dict(
             hcloud_prefix=self.resource_prefix,

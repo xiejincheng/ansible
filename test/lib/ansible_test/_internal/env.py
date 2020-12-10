@@ -3,11 +3,9 @@ from __future__ import (absolute_import, division, print_function)
 __metaclass__ = type
 
 import datetime
-import json
 import functools
 import os
 import platform
-import re
 import signal
 import sys
 import time
@@ -17,17 +15,24 @@ from .config import (
     TestConfig,
 )
 
+from .io import (
+    write_json_file,
+    read_json_file,
+)
+
 from .util import (
     display,
     find_executable,
     SubprocessError,
     ApplicationError,
-    load_module,
-    ANSIBLE_LIB_ROOT,
+    get_ansible_version,
+    get_available_python_versions,
 )
 
-from .git import (
-    Git,
+from .util_common import (
+    data_context,
+    write_json_test_results,
+    ResultType,
 )
 
 from .docker_util import (
@@ -47,8 +52,12 @@ from .test import (
     TestTimeout,
 )
 
-from .data import (
-    data_context,
+from .executor import (
+    SUPPORTED_PYTHON_VERSIONS,
+)
+
+from .ci import (
+    get_ci_provider,
 )
 
 
@@ -63,6 +72,11 @@ class EnvConfig(CommonConfig):
         self.show = args.show
         self.dump = args.dump
         self.timeout = args.timeout
+        self.list_files = args.list_files
+
+        if not self.show and not self.dump and self.timeout is None and not self.list_files:
+            # default to --show if no options were given
+            self.show = True
 
 
 def command_env(args):
@@ -70,6 +84,7 @@ def command_env(args):
     :type args: EnvConfig
     """
     show_dump_env(args)
+    list_files_env(args)
     set_timeout(args)
 
 
@@ -86,7 +101,11 @@ def show_dump_env(args):
         ),
         docker=get_docker_details(args),
         environ=os.environ.copy(),
-        git=get_git_details(args),
+        location=dict(
+            pwd=os.environ.get('PWD', None),
+            cwd=os.getcwd(),
+        ),
+        git=get_ci_provider().get_git_details(args),
         platform=dict(
             datetime=datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
             platform=platform.platform(),
@@ -96,6 +115,7 @@ def show_dump_env(args):
             executable=sys.executable,
             version=platform.python_version(),
         ),
+        interpreters=get_available_python_versions(SUPPORTED_PYTHON_VERSIONS),
     )
 
     if args.show:
@@ -109,8 +129,16 @@ def show_dump_env(args):
         show_dict(data, verbose)
 
     if args.dump and not args.explain:
-        with open(os.path.join(data_context().results, 'bot', 'data-environment.json'), 'w') as results_fd:
-            results_fd.write(json.dumps(data, sort_keys=True))
+        write_json_test_results(ResultType.BOT, 'data-environment.json', data)
+
+
+def list_files_env(args):  # type: (EnvConfig) -> None
+    """List files on stdout."""
+    if not args.list_files:
+        return
+
+    for path in data_context().content.all_files():
+        display.info(path)
 
 
 def set_timeout(args):
@@ -138,8 +166,7 @@ def set_timeout(args):
             deadline=deadline,
         )
 
-        with open(TIMEOUT_PATH, 'w') as timeout_fd:
-            json.dump(data, timeout_fd, indent=4, sort_keys=True)
+        write_json_file(TIMEOUT_PATH, data)
     elif os.path.exists(TIMEOUT_PATH):
         os.remove(TIMEOUT_PATH)
 
@@ -151,9 +178,7 @@ def get_timeout():
     if not os.path.exists(TIMEOUT_PATH):
         return None
 
-    with open(TIMEOUT_PATH, 'r') as timeout_fd:
-        data = json.load(timeout_fd)
-
+    data = read_json_file(TIMEOUT_PATH)
     data['deadline'] = datetime.datetime.strptime(data['deadline'], '%Y-%m-%dT%H:%M:%SZ')
 
     return data
@@ -239,25 +264,6 @@ def show_dict(data, verbose, root_verbosity=0, path=None):
             display.info(indent + '%s: %s' % (key, value), verbosity=verbosity)
 
 
-def get_ansible_version():  # type: () -> str
-    """Return the Ansible version."""
-    try:
-        return get_ansible_version.version
-    except AttributeError:
-        pass
-
-    # ansible may not be in our sys.path
-    # avoids a symlink to release.py since ansible placement relative to ansible-test may change during delegation
-    load_module(os.path.join(ANSIBLE_LIB_ROOT, 'release.py'), 'ansible_release')
-
-    # noinspection PyUnresolvedReferences
-    from ansible_release import __version__ as ansible_version  # pylint: disable=import-error
-
-    get_ansible_version.version = ansible_version
-
-    return ansible_version
-
-
 def get_docker_details(args):
     """
     :type args: CommonConfig
@@ -285,76 +291,3 @@ def get_docker_details(args):
     )
 
     return docker_details
-
-
-def get_git_details(args):
-    """
-    :type args: CommonConfig
-    :rtype: dict[str, any]
-    """
-    commit = os.environ.get('COMMIT')
-    base_commit = os.environ.get('BASE_COMMIT')
-
-    git_details = dict(
-        base_commit=base_commit,
-        commit=commit,
-        merged_commit=get_merged_commit(args, commit),
-        root=os.getcwd(),
-    )
-
-    return git_details
-
-
-# noinspection PyUnusedLocal
-def get_merged_commit(args, commit):  # pylint: disable=unused-argument
-    """
-    :type args: CommonConfig
-    :type commit: str
-    :rtype: str | None
-    """
-    if not commit:
-        return None
-
-    git = Git()
-
-    try:
-        show_commit = git.run_git(['show', '--no-patch', '--no-abbrev', commit])
-    except SubprocessError as ex:
-        # This should only fail for pull requests where the commit does not exist.
-        # Merge runs would fail much earlier when attempting to checkout the commit.
-        raise ApplicationError('Commit %s was not found:\n\n%s\n\n'
-                               'GitHub may not have fully replicated the commit across their infrastructure.\n'
-                               'It is also possible the commit was removed by a force push between job creation and execution.\n'
-                               'Find the latest run for the pull request and restart failed jobs as needed.'
-                               % (commit, ex.stderr.strip()))
-
-    head_commit = git.run_git(['show', '--no-patch', '--no-abbrev', 'HEAD'])
-
-    if show_commit == head_commit:
-        # Commit is HEAD, so this is not a pull request or the base branch for the pull request is up-to-date.
-        return None
-
-    match_merge = re.search(r'^Merge: (?P<parents>[0-9a-f]{40} [0-9a-f]{40})$', head_commit, flags=re.MULTILINE)
-
-    if not match_merge:
-        # The most likely scenarios resulting in a failure here are:
-        # A new run should or does supersede this job, but it wasn't cancelled in time.
-        # A job was superseded and then later restarted.
-        raise ApplicationError('HEAD is not commit %s or a merge commit:\n\n%s\n\n'
-                               'This job has likely been superseded by another run due to additional commits being pushed.\n'
-                               'Find the latest run for the pull request and restart failed jobs as needed.'
-                               % (commit, head_commit.strip()))
-
-    parents = set(match_merge.group('parents').split(' '))
-
-    if len(parents) != 2:
-        raise ApplicationError('HEAD is a %d-way octopus merge.' % len(parents))
-
-    if commit not in parents:
-        raise ApplicationError('Commit %s is not a parent of HEAD.' % commit)
-
-    parents.remove(commit)
-
-    last_commit = parents.pop()
-
-    return last_commit

@@ -12,7 +12,6 @@ from ..sanity import (
     SanitySingleVersion,
     SanityFailure,
     SanitySuccess,
-    SanityMessage,
 )
 
 from ..target import (
@@ -51,18 +50,17 @@ class AnsibleDocTest(SanitySingleVersion):
     def filter_targets(self, targets):  # type: (t.List[TestTarget]) -> t.List[TestTarget]
         """Return the given list of test targets, filtered to include only those relevant for the test."""
         # This should use documentable plugins from constants instead
-        plugin_type_blacklist = set([
+        unsupported_plugin_types = set([
             # not supported by ansible-doc
             'action',
             'doc_fragments',
             'filter',
             'module_utils',
-            'netconf',
             'terminal',
             'test',
         ])
 
-        plugin_paths = [plugin_path for plugin_type, plugin_path in data_context().content.plugin_paths.items() if plugin_type not in plugin_type_blacklist]
+        plugin_paths = [plugin_path for plugin_type, plugin_path in data_context().content.plugin_paths.items() if plugin_type not in unsupported_plugin_types]
 
         return [target for target in targets
                 if os.path.splitext(target.path)[1] == '.py'
@@ -104,36 +102,39 @@ class AnsibleDocTest(SanitySingleVersion):
         error_messages = []
 
         for doc_type in sorted(doc_targets):
-            cmd = ['ansible-doc', '-t', doc_type] + sorted(doc_targets[doc_type])
+            for format_option in [None, '--json']:
+                cmd = ['ansible-doc', '-t', doc_type]
+                if format_option is not None:
+                    cmd.append(format_option)
+                cmd.extend(sorted(doc_targets[doc_type]))
 
-            try:
-                with coverage_context(args):
-                    stdout, stderr = intercept_command(args, cmd, target_name='ansible-doc', env=env, capture=True, python_version=python_version)
+                try:
+                    with coverage_context(args):
+                        stdout, stderr = intercept_command(args, cmd, target_name='ansible-doc', env=env, capture=True, python_version=python_version)
 
-                status = 0
-            except SubprocessError as ex:
-                stdout = ex.stdout
-                stderr = ex.stderr
-                status = ex.status
+                    status = 0
+                except SubprocessError as ex:
+                    stdout = ex.stdout
+                    stderr = ex.stderr
+                    status = ex.status
 
-            if stderr:
-                errors = stderr.strip().splitlines()
-                messages = [self.parse_error(e, target_paths) for e in errors]
+                if status:
+                    summary = u'%s' % SubprocessError(cmd=cmd, status=status, stderr=stderr)
+                    return SanityFailure(self.name, summary=summary)
 
-                if messages and all(messages):
-                    error_messages += messages
-                    continue
+                if stdout:
+                    display.info(stdout.strip(), verbosity=3)
 
-            if status:
-                summary = u'%s' % SubprocessError(cmd=cmd, status=status, stderr=stderr)
-                return SanityFailure(self.name, summary=summary)
+                if stderr:
+                    # ignore removed module/plugin warnings
+                    stderr = re.sub(r'\[WARNING\]: [^ ]+ [^ ]+ has been removed\n', '', stderr).strip()
 
-            if stdout:
-                display.info(stdout.strip(), verbosity=3)
+                if stderr:
+                    summary = u'Output on stderr from ansible-doc is considered an error.\n\n%s' % SubprocessError(cmd, stderr=stderr)
+                    return SanityFailure(self.name, summary=summary)
 
-            if stderr:
-                summary = u'Output on stderr from ansible-doc is considered an error.\n\n%s' % SubprocessError(cmd, stderr=stderr)
-                return SanityFailure(self.name, summary=summary)
+        if args.explain:
+            return SanitySuccess(self.name)
 
         error_messages = settings.process_errors(error_messages, paths)
 
@@ -141,30 +142,3 @@ class AnsibleDocTest(SanitySingleVersion):
             return SanityFailure(self.name, messages=error_messages)
 
         return SanitySuccess(self.name)
-
-    @staticmethod
-    def parse_error(error, target_paths):
-        """
-        :type error: str
-        :type target_paths: dict[str, dict[str, str]]
-        :rtype: SanityMessage | None
-        """
-        # example error messages from lib/ansible/cli/doc.py:
-        #   ERROR! module ping missing documentation (or could not parse documentation): expected string or buffer
-        #   [ERROR]: module ping has a documentation error formatting or is missing documentation.
-        match = re.search(r'^[^ ]*ERROR[^ ]* (?P<type>[^ ]+) (?P<name>[^ ]+) (?P<text>.*)$', error)
-
-        if match:
-            groups = match.groupdict()
-
-            error_type = groups['type']
-            error_name = groups['name']
-            error_text = groups['text']
-
-            if error_name in target_paths.get(error_type, {}):
-                return SanityMessage(
-                    message=error_text,
-                    path=target_paths[error_type][error_name],
-                )
-
-        return None

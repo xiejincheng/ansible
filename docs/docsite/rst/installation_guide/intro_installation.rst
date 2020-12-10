@@ -1,49 +1,32 @@
 .. _installation_guide:
 .. _intro_installation_guide:
 
-Installation Guide
-==================
+Installing Ansible
+===================
 
-.. contents:: Topics
+This page describes how to install Ansible on different platforms.
+Ansible is an agentless automation tool that by default manages machines over the SSH protocol. Once installed, Ansible does
+not add a database, and there will be no daemons to start or keep running.  You only need to install it on one machine (which could easily be a laptop) and it can manage an entire fleet of remote machines from that central point.  When Ansible manages remote machines, it does not leave software installed or running on them, so there's no real question about how to upgrade Ansible when moving to a new version.
 
-Welcome to the Ansible Installation Guide!
 
-.. _what_will_be_installed:
+.. contents::
+  :local:
 
-Basics / What Will Be Installed
-```````````````````````````````
+Prerequisites
+--------------
 
-Ansible by default manages machines over the SSH protocol.
-
-Once Ansible is installed, it will not add a database, and there will be no daemons to start or keep running.  You only need to install it on one machine (which could easily be a laptop) and it can manage an entire fleet of remote machines from that central point.  When Ansible manages remote machines, it does not leave software installed or running on them, so there's no real question about how to upgrade Ansible when moving to a new version.
-
-.. _what_version:
-
-What Version To Pick?
-`````````````````````
-
-Because it runs so easily from source and does not require any installation of software on remote
-machines, many users will actually track the development version.
-
-Ansible's release cycles are usually about four months long. Due to this short release cycle,
-minor bugs will generally be fixed in the next release versus maintaining backports on the stable branch.
-Major bugs will still have maintenance releases when needed, though these are infrequent.
-
-If you are wishing to run the latest released version of Ansible and you are running Red Hat Enterprise Linux (TM), CentOS, Fedora, Debian, or Ubuntu, we recommend using the OS package manager.
-
-For other installation options, we recommend installing via ``pip``, which is the Python package manager.
-
-If you wish to track the development release to use and test the latest features, we will share
-information about running from source. It's not necessary to install the program to run from source.
+You install Ansible on a control node, which then uses SSH (by default) to communicate with your managed nodes (those end devices you want to automate).
 
 .. _control_node_requirements:
 
-Control Node Requirements
-````````````````````````````
+Control node requirements
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Currently Ansible can be run from any machine with Python 2 (version 2.7) or Python 3 (versions 3.5 and higher) installed. Windows isn't supported for the control node.
-
+Currently Ansible can be run from any machine with Python 2 (version 2.7) or Python 3 (versions 3.5 and higher) installed. Ansible 2.11 will make Python 3.8 a soft dependency for the control node, but will function with the aforementioned requirements. Ansible 2.12 will require Python 3.8 or newer to function on the control node. Starting with Ansible 2.11, the project will only be packaged for Python 3.8 and newer.
 This includes Red Hat, Debian, CentOS, macOS, any of the BSDs, and so on.
+Windows is not supported for the control node, read more about this in `Matt Davis's blog post <http://blog.rolpdog.com/2020/03/why-no-ansible-controller-for-windows.html>`_.
+
+When choosing a control node, bear in mind that any management system benefits from being run near the machines being managed. If you are running Ansible in a cloud, consider running it from a machine inside that cloud. In most cases this will work better than on the open Internet.
 
 .. note::
 
@@ -52,16 +35,20 @@ This includes Red Hat, Debian, CentOS, macOS, any of the BSDs, and so on.
 
 .. warning::
 
-    Please note that some modules and plugins have additional requirements. For modules these need to be satisfied on the 'target' machine and should be listed in the module specific docs.
+    Ansible 2.11 will make Python 3.8 a soft dependency for the control node, but will function with the aforementioned requirements. Ansible 2.12 will require Python 3.8 or newer to function on the control node. Starting with Ansible 2.11, the project will only be packaged for Python 3.8 and newer.
+
+.. warning::
+
+    Please note that some modules and plugins have additional requirements. For modules these need to be satisfied on the 'target' machine (the managed node) and should be listed in the module specific docs.
 
 .. _managed_node_requirements:
 
-Managed Node Requirements
-`````````````````````````
+Managed node requirements
+^^^^^^^^^^^^^^^^^^^^^^^^^
 
-On the managed nodes, you need a way to communicate, which is normally ssh. By
-default this uses sftp. If that's not available, you can switch to scp in
-:file:`ansible.cfg`.  You also need Python 2 (version 2.6 or later) or Python 3 (version 3.5 or
+On the managed nodes, you need a way to communicate, which is normally SSH. By
+default this uses SFTP. If that's not available, you can switch to SCP in
+:ref:`ansible.cfg <ansible_configuration_settings>`.  You also need Python 2 (version 2.6 or later) or Python 3 (version 3.5 or
 later).
 
 .. note::
@@ -71,35 +58,44 @@ later).
      can use the :ref:`yum module<yum_module>` or :ref:`dnf module<dnf_module>` in Ansible to install this package on remote systems
      that do not have it.
 
-   * By default, Ansible uses the python interpreter located at :file:`/usr/bin/python` to run its
-     modules.  However, some Linux distributions may only have a Python 3 interpreter installed to
-     :file:`/usr/bin/python3` by default.  On those systems, you may see an error like::
+   * By default, before the first Python module in a playbook runs on a host, Ansible attempts to discover a suitable Python interpreter on that host. You can override the discovery behavior by setting the :ref:`ansible_python_interpreter<ansible_python_interpreter>` inventory variable to a specific interpreter, and in other ways. See :ref:`interpreter_discovery` for details.
 
-        "module_stdout": "/bin/sh: /usr/bin/python: No such file or directory\r\n"
-
-     you can either set the :ref:`ansible_python_interpreter<ansible_python_interpreter>` inventory variable (see
-     :ref:`inventory`) to point at your interpreter or you can install a Python 2 interpreter for
-     modules to use. You will still need to set :ref:`ansible_python_interpreter<ansible_python_interpreter>` if the Python
-     2 interpreter is not installed to :command:`/usr/bin/python`.
-
-   * Ansible's "raw" module (for executing commands in a quick and dirty way) and the script module
-     don't even need Python installed.  So technically, you can use Ansible to install a compatible
+   * Ansible's :ref:`raw module<raw_module>`, and the :ref:`script module<script_module>`, do not depend
+     on a client side install of Python to run.  Technically, you can use Ansible to install a compatible
      version of Python using the :ref:`raw module<raw_module>`, which then allows you to use everything else.
      For example, if you need to bootstrap Python 2 onto a RHEL-based system, you can install it
-     via
+     as follows:
 
      .. code-block:: shell
 
         $ ansible myhost --become -m raw -a "yum install -y python2"
 
-.. _installing_the_control_node:
+.. _what_version:
 
-Installing the Control Node
-``````````````````````````````
+Selecting an Ansible version to install
+---------------------------------------
+
+Which Ansible version to install is based on your particular needs. You can choose any of the following ways to install Ansible:
+
+* Install the latest release with your OS package manager (for Red Hat Enterprise Linux (TM), CentOS, Fedora, Debian, or Ubuntu).
+* Install with ``pip`` (the Python package manager).
+* Install ``ansible-base`` from source to access the development (``devel``) version to develop or test the latest features.
+
+.. note::
+
+	You should only run ``ansible-base`` from ``devel`` if you are modifying ``ansible-base``, or trying out features under development. This is a rapidly changing source of code and can become unstable at any point.
+
+
+Ansible creates new releases two to three times a year. Due to this short release cycle,
+minor bugs will generally be fixed in the next release rather than maintaining backports on the stable branch.
+Major bugs will still have maintenance releases when needed, though these are infrequent.
+
+
+.. _installing_the_control_node:
 .. _from_yum:
 
-Latest Release via DNF or Yum
-+++++++++++++++++++++++++++++
+Installing Ansible on RHEL, CentOS, or Fedora
+----------------------------------------------
 
 On Fedora:
 
@@ -107,56 +103,58 @@ On Fedora:
 
     $ sudo dnf install ansible
 
-On RHEL and CentOS:
+On RHEL:
 
 .. code-block:: bash
 
     $ sudo yum install ansible
 
-RPMs for RHEL 7  and RHEL 8 are available from the `Ansible Engine repository <https://access.redhat.com/articles/3174981>`_.
+On CentOS:
+
+.. code-block:: bash
+
+    $ sudo yum install epel-release
+    $ sudo yum install ansible
+
+RPMs for RHEL 7 and RHEL 8 are available from the `Ansible Engine repository <https://access.redhat.com/articles/3174981>`_.
 
 To enable the Ansible Engine repository for RHEL 8, run the following command:
 
 .. code-block:: bash
 
-    $ sudo subscription-manager repos --enable ansible-2.8-for-rhel-8-x86_64-rpms
+    $ sudo subscription-manager repos --enable ansible-2.9-for-rhel-8-x86_64-rpms
 
 To enable the Ansible Engine repository for RHEL 7, run the following command:
 
 .. code-block:: bash
 
-    $ sudo subscription-manager repos --enable rhel-7-server-ansible-2.8-rpms
+    $ sudo subscription-manager repos --enable rhel-7-server-ansible-2.9-rpms
 
-RPMs for currently supported versions of RHEL, CentOS, and Fedora are available from `EPEL <https://fedoraproject.org/wiki/EPEL>`_ as well as `releases.ansible.com <https://releases.ansible.com/ansible/rpm>`_.
+RPMs for currently supported versions of RHEL and CentOS are also available from `EPEL <https://fedoraproject.org/wiki/EPEL>`_.
 
-Ansible version 2.4 and later can manage earlier operating systems that contain Python 2.6 or higher.
+.. note::
 
-You can also build an RPM yourself. From the root of a checkout or tarball, use the ``make rpm`` command to build an RPM you can distribute and install.
+	Since Ansible 2.10 for RHEL is not available at this time,  continue to use Ansible 2.9.
 
-.. code-block:: bash
-
-    $ git clone https://github.com/ansible/ansible.git
-    $ cd ./ansible
-    $ make rpm
-    $ sudo rpm -Uvh ./rpm-build/ansible-*.noarch.rpm
+Ansible can manage older operating systems that contain Python 2.6 or higher.
 
 .. _from_apt:
 
-Latest Releases via Apt (Ubuntu)
-++++++++++++++++++++++++++++++++
+Installing Ansible on Ubuntu
+----------------------------
 
 Ubuntu builds are available `in a PPA here <https://launchpad.net/~ansible/+archive/ubuntu/ansible>`_.
 
-To configure the PPA on your machine and install ansible run these commands:
+To configure the PPA on your machine and install Ansible run these commands:
 
 .. code-block:: bash
 
     $ sudo apt update
     $ sudo apt install software-properties-common
-    $ sudo apt-add-repository --yes --update ppa:ansible/ansible
+    $ sudo add-apt-repository --yes --update ppa:ansible/ansible
     $ sudo apt install ansible
 
-.. note:: On older Ubuntu distributions, "software-properties-common" is called "python-software-properties". You may want to use ``apt-get`` instead of ``apt`` in older versions. Also, be aware that only newer distributions (i.e. 18.04, 18.10, etc.) have a ``-u`` or ``--update`` flag, so adjust your script accordingly.
+.. note:: On older Ubuntu distributions, "software-properties-common" is called "python-software-properties". You may want to use ``apt-get`` instead of ``apt`` in older versions. Also, be aware that only newer distributions (in other words, 18.04, 18.10, and so on) have a ``-u`` or ``--update`` flag, so adjust your script accordingly.
 
 Debian/Ubuntu packages can also be built from the source checkout, run:
 
@@ -164,10 +162,10 @@ Debian/Ubuntu packages can also be built from the source checkout, run:
 
     $ make deb
 
-You may also wish to run from source to get the latest, which is covered below.
+You may also wish to run from source to get the development branch, which is covered below.
 
-Latest Releases via Apt (Debian)
-++++++++++++++++++++++++++++++++
+Installing Ansible on Debian
+----------------------------
 
 Debian users may leverage the same source as the Ubuntu PPA.
 
@@ -187,21 +185,21 @@ Then run these commands:
 
 .. note:: This method has been verified with the Trusty sources in Debian Jessie and Stretch but may not be supported in earlier versions. You may want to use ``apt-get`` instead of ``apt`` in older versions.
 
-Latest Releases via Portage (Gentoo)
-++++++++++++++++++++++++++++++++++++
+Installing Ansible on Gentoo with portage
+-----------------------------------------
 
 .. code-block:: bash
 
     $ emerge -av app-admin/ansible
 
-To install the newest version, you may need to unmask the ansible package prior to emerging:
+To install the newest version, you may need to unmask the Ansible package prior to emerging:
 
 .. code-block:: bash
 
     $ echo 'app-admin/ansible' >> /etc/portage/package.accept_keywords
 
-Latest Releases via pkg (FreeBSD)
-+++++++++++++++++++++++++++++++++
+Installing Ansible on FreeBSD
+-----------------------------
 
 Though Ansible works with both Python 2 and 3 versions, FreeBSD has different packages for each Python version.
 So to install you can use:
@@ -223,7 +221,7 @@ You may also wish to install from ports, run:
 
     $ sudo make -C /usr/ports/sysutils/ansible install
 
-You can also choose a specific version, i.e  ``ansible25``.
+You can also choose a specific version, for example ``ansible25``.
 
 Older versions of FreeBSD worked with something like this (substitute for your choice of package manager):
 
@@ -233,17 +231,26 @@ Older versions of FreeBSD worked with something like this (substitute for your c
 
 .. _on_macos:
 
-Latest Releases on macOS
-++++++++++++++++++++++++++
+Installing Ansible on macOS
+---------------------------
 
-The preferred way to install Ansible on a Mac is via ``pip``.
+The preferred way to install Ansible on a Mac is with ``pip``.
 
-The instructions can be found in `Latest Releases via Pip`_ section. If you are running macOS version 10.12 or older, then you should upgrade to the latest ``pip`` to connect to the Python Package Index securely.
+The instructions can be found in :ref:`from_pip`. If you are running macOS version 10.12 or older, then you should upgrade to the latest ``pip`` to connect to the Python Package Index securely. It should be noted that pip must be run as a module on macOS, and the linked ``pip`` instructions will show you how to do that.
+
+.. note::
+
+	If you have Ansible 2.9 or older installed, you need to use ``pip uninstall ansible`` first to remove older versions of Ansible before re-installing it.
+
+If you are installing on macOS Mavericks (10.9), you may encounter some noise from your compiler. A workaround is to do the following::
+
+    $ CFLAGS=-Qunused-arguments CPPFLAGS=-Qunused-arguments pip install --user ansible
+
 
 .. _from_pkgutil:
 
-Latest Releases via OpenCSW (Solaris)
-+++++++++++++++++++++++++++++++++++++
+Installing Ansible on Solaris
+-----------------------------
 
 Ansible is available for Solaris as `SysV package from OpenCSW <https://www.opencsw.org/packages/ansible/>`_.
 
@@ -254,8 +261,8 @@ Ansible is available for Solaris as `SysV package from OpenCSW <https://www.open
 
 .. _from_pacman:
 
-Latest Releases via Pacman (Arch Linux)
-+++++++++++++++++++++++++++++++++++++++
+Installing Ansible on Arch Linux
+---------------------------------
 
 Ansible is available in the Community repository::
 
@@ -267,8 +274,8 @@ Also see the `Ansible <https://wiki.archlinux.org/index.php/Ansible>`_ page on t
 
 .. _from_sbopkg:
 
-Latest Releases via sbopkg (Slackware Linux)
-++++++++++++++++++++++++++++++++++++++++++++
+Installing Ansible on Slackware Linux
+-------------------------------------
 
 Ansible build script is available in the `SlackBuilds.org <https://slackbuilds.org/apps/ansible/>`_ repository.
 Can be built and installed using `sbopkg <https://sbopkg.org/>`_.
@@ -277,14 +284,14 @@ Create queue with Ansible and all dependencies::
 
     # sqg -p ansible
 
-Build and install packages from created queuefile (answer Q for question if sbopkg should use queue or package)::
+Build and install packages from a created queuefile (answer Q for question if sbopkg should use queue or package)::
 
     # sbopkg -k -i ansible
 
 .. _from swupd:
 
-Latest Release via swupd (Clear Linux)
-+++++++++++++++++++++++++++++++++++++++
+Installing Ansible on Clear Linux
+---------------------------------
 
 Ansible and its dependencies are available as part of the sysadmin host management bundle::
 
@@ -296,40 +303,38 @@ Update of the software will be managed by the swupd tool::
 
 .. _from_pip:
 
-Latest Releases via Pip
-+++++++++++++++++++++++
+Installing Ansible with ``pip``
+--------------------------------
 
-Ansible can be installed via ``pip``, the Python package manager.  If ``pip`` isn't already available on your system of Python, run the following commands to install it::
+Ansible can be installed with ``pip``, the Python package manager. If ``pip`` isn't already available on your system of Python, run the following commands to install it::
 
     $ curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
     $ python get-pip.py --user
 
+.. note::
+
+  	If you have Ansible 2.9 or older installed, you need to use ``pip uninstall ansible`` first to remove older versions of Ansible before re-installing it.
+
 Then install Ansible [1]_::
 
-    $ pip install --user ansible
+    $ python -m pip install --user ansible
 
-Or if you are looking for the latest development version::
 
-    $ pip install --user git+https://github.com/ansible/ansible.git@devel
+.. tip::
 
-If you are installing on macOS Mavericks (10.9), you may encounter some noise from your compiler. A workaround is to do the following::
+    If this is your first time installing packages with pip, you may need to perform some additional configuration before you are able to run
+    Ansible. See the Python documentation on `installing to the user site`_ for more information.
 
-    $ CFLAGS=-Qunused-arguments CPPFLAGS=-Qunused-arguments pip install --user ansible
+.. _installing to the user site: https://packaging.python.org/tutorials/installing-packages/#installing-to-the-user-site
 
 In order to use the ``paramiko`` connection plugin or modules that require ``paramiko``, install the required module [2]_::
 
-    $ pip install --user paramiko
-
-Ansible can also be installed inside a new or existing ``virtualenv``::
-
-    $ python -m virtualenv ansible  # Create a virtualenv if one does not already exist
-    $ source ansible/bin/activate   # Activate the virtual environment
-    $ pip install ansible
+    $ python -m pip install --user paramiko
 
 If you wish to install Ansible globally, run the following commands::
 
     $ sudo python get-pip.py
-    $ sudo pip install ansible
+    $ sudo python -m pip install ansible
 
 .. note::
 
@@ -341,44 +346,106 @@ If you wish to install Ansible globally, run the following commands::
     Please make sure you have the latest version of ``pip`` before installing Ansible.
     If you have an older version of ``pip`` installed, you can upgrade by following `pip's upgrade instructions <https://pip.pypa.io/en/stable/installing/#upgrading-pip>`_ .
 
-.. _tagged_releases:
+Upgrading Ansible from version 2.9 and older to version 2.10 or later
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Tarballs of Tagged Releases
-+++++++++++++++++++++++++++
+Starting in version 2.10, Ansible is made of two packages. You need to first uninstall the old Ansible version (2.9 or earlier) before upgrading.
+If you do not uninstall the older version of Ansible, you will see the following message, and no change will be performed:
 
-Packaging Ansible or wanting to build a local package yourself, but don't want to do a git checkout?  Tarballs of releases are available on the `Ansible downloads <https://releases.ansible.com/ansible>`_ page.
+.. code-block:: console
 
-These releases are also tagged in the `git repository <https://github.com/ansible/ansible/releases>`_ with the release version.
+    Cannot install ansible-base with a pre-existing ansible==2.x installation.
 
+    Installing ansible-base with ansible-2.9 or older currently installed with
+    pip is known to cause problems. Please uninstall ansible and install the new
+    version:
 
+    pip uninstall ansible
+    pip install ansible-base
 
+    ...
 
-.. _from_source:
+As explained by the message, to upgrade you must first remove the version of Ansible installed and then install it
+to the latest version.
 
-Running From Source
-+++++++++++++++++++
+.. code-block:: console
 
-Ansible is easy to run from source. You do not need ``root`` permissions
-to use it and there is no software to actually install. No daemons
-or database setup are required. Because of this, many users in our community use the
-development version of Ansible all of the time so they can take advantage of new features
-when they are implemented and easily contribute to the project. Because there is
-nothing to install, following the development version is significantly easier than most
-open source projects.
+    $ pip uninstall ansible
+    $ pip install ansible
+
+.. _from_pip_devel:
+
+Installing the development version of ``ansible-base``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+In Ansible 2.10 and later, The `ansible/ansible repository <https://github.com/ansible/ansible>`_ contains the code for basic features and functions, such as copying module code to managed nodes. This code is also known as ``ansible-base``.
 
 .. note::
 
-   If you are want to use Ansible Tower as the Control Node, do not use a source installation of Ansible. Please use an OS package manager (like ``apt`` or ``yum``) or ``pip`` to install a stable version.
+    You should only run ``ansible-base`` from ``devel`` if you are modifying ``ansible-base`` or trying out features under development. This is a rapidly changing source of code and can become unstable at any point.
+
+.. note::
+
+    If you have Ansible 2.9 or older installed, you need to use ``pip uninstall ansible`` first to remove older versions of Ansible before re-installing it.
 
 
-To install from source, clone the Ansible git repository:
+You can install the development version of ``ansible-base`` directly from GitHub with pip.
+
+.. code-block:: bash
+
+    $ python -m pip install --user https://github.com/ansible/ansible/archive/devel.tar.gz
+
+Replace ``devel`` in the URL mentioned above, with any other branch or tag on GitHub to install older versions of Ansible (prior to ``ansible-base`` 2.10.) This installs all of Ansible.
+
+.. code-block:: bash
+
+    $ python -m pip install --user https://github.com/ansible/ansible/archive/stable-2.9.tar.gz
+
+See :ref:`from_source` for instructions on how to run ``ansible-base`` directly from source, without the requirement of installation.
+
+.. _from_pip_venv:
+
+Virtual Environments
+^^^^^^^^^^^^^^^^^^^^
+
+.. note::
+
+	If you have Ansible 2.9 or older installed, you need to use ``pip uninstall ansible`` first to remove older versions of Ansible before re-installing it.
+
+Ansible can also be installed inside a new or existing ``virtualenv``::
+
+    $ python -m virtualenv ansible  # Create a virtualenv if one does not already exist
+    $ source ansible/bin/activate   # Activate the virtual environment
+    $ python -m pip install ansible
+
+.. _from_source:
+
+Running ``ansible-base`` from source (devel)
+---------------------------------------------
+
+In Ansible 2.10 and later, The `ansible/ansible repository <https://github.com/ansible/ansible>`_ contains the code for basic features and functions, such as copying module code to managed nodes. This code is also known as ``ansible-base``.
+
+.. note::
+
+	You should only run ``ansible-base`` from ``devel`` if you are modifying ``ansible-base`` or trying out features under development. This is a rapidly changing source of code and can become unstable at any point.
+
+``ansible-base`` is easy to run from source. You do not need ``root`` permissions
+to use it and there is no software to actually install. No daemons
+or database setup are required.
+
+.. note::
+
+   If you want to use Ansible Tower as the control node, do not use a source installation of Ansible. Please use an OS package manager (like ``apt`` or ``yum``) or ``pip`` to install a stable version.
+
+
+To install from source, clone the ``ansible-base`` git repository:
 
 .. code-block:: bash
 
     $ git clone https://github.com/ansible/ansible.git
     $ cd ./ansible
 
-Once ``git`` has cloned the Ansible repository, setup the Ansible environment:
+Once ``git`` has cloned the ``ansible-base`` repository, setup the Ansible environment:
 
 Using Bash:
 
@@ -403,9 +470,9 @@ Ansible also uses the following Python modules that need to be installed [1]_:
 
 .. code-block:: bash
 
-    $ pip install --user -r ./requirements.txt
+    $ python -m pip install --user -r ./requirements.txt
 
-To update ansible checkouts, use pull-with-rebase so any local changes are replayed.
+To update ``ansible-base`` checkouts, use pull-with-rebase so any local changes are replayed.
 
 .. code-block:: bash
 
@@ -425,7 +492,7 @@ other than ``/etc/ansible/hosts``:
     $ echo "127.0.0.1" > ~/ansible_hosts
     $ export ANSIBLE_INVENTORY=~/ansible_hosts
 
-You can read more about the inventory file in later parts of the manual.
+You can read more about the inventory file at :ref:`inventory`.
 
 Now let's test things with a ping command:
 
@@ -435,23 +502,34 @@ Now let's test things with a ping command:
 
 You can also use "sudo make install".
 
+.. _tagged_releases:
+
+Finding tarballs of tagged releases
+-----------------------------------
+
+Packaging Ansible or wanting to build a local package yourself, but don't want to do a git checkout?  Tarballs of releases are available from ``pypi`` as https://pypi.python.org/packages/source/a/ansible/ansible-{{VERSION}}.tar.gz. You can make VERSION a variable in your package managing system that you update in one place whenever you package a new version. Alternately, you can download https://pypi.python.org/project/ansible  to get the latest stable release.
+
+.. note::
+
+	If you are creating your own Ansible package, you must also download or package ``ansible-base`` as part of your Ansible package. You can download it as https://pypi.python.org/packages/source/a/ansible-base/ansible-base-{{VERSION}}.tar.gz.
+
+These releases are also tagged in the `git repository <https://github.com/ansible/ansible/releases>`_ with the release version.
+
+
 .. _shell_completion:
 
-Shell Completion
-````````````````
+Ansible command shell completion
+--------------------------------
 
-As of Ansible 2.9 shell completion of the ansible command line utilities is available and provided through an optional dependency
-called ``argcomplete``. ``argcomplete`` supports bash, and limited support for zsh and tcsh
+As of Ansible 2.9, shell completion of the Ansible command line utilities is available and provided through an optional dependency
+called ``argcomplete``. ``argcomplete`` supports bash, and has limited support for zsh and tcsh.
 
-``python-argcomplete`` can be installed from EPEL on Red Hat Enterprise based distributions, and is available in the standard OS repositories for many other distributions.
+You can install ``python-argcomplete`` from EPEL on Red Hat Enterprise based distributions, and or from the standard OS repositories for many other distributions.
 
-For more information about installing and configuration see the `argcomplete documentation <https://argcomplete.readthedocs.io/en/latest/>_`.
+For more information about installing and configuration see the `argcomplete documentation <https://argcomplete.readthedocs.io/en/latest/>`_.
 
-Installing
-++++++++++
-
-via yum/dnf
------------
+Installing ``argcomplete`` on RHEL, CentOS, or Fedora
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 On Fedora:
 
@@ -466,40 +544,42 @@ On RHEL and CentOS:
     $ sudo yum install epel-release
     $ sudo yum install python-argcomplete
 
-via apt
--------
+
+Installing ``argcomplete`` with ``apt``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
     $ sudo apt install python-argcomplete
 
-via pip
--------
+
+Installing ``argcomplete`` with ``pip``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 .. code-block:: bash
 
-    $ pip install argcomplete
+    $ python -m pip install argcomplete
 
-Configuring
-+++++++++++
+Configuring ``argcomplete``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-There are 2 ways to configure argcomplete to allow shell completion of the Ansible command line utilities. Per command, or globally.
+There are 2 ways to configure ``argcomplete`` to allow shell completion of the Ansible command line utilities: globally or per command.
 
 Globally
---------
+"""""""""
 
-Global completion requires bash 4.2
+Global completion requires bash 4.2.
 
 .. code-block:: bash
 
     $ sudo activate-global-python-argcomplete
 
-This will write a bash completion file to a global location, use ``--dest`` to change the location
+This will write a bash completion file to a global location. Use ``--dest`` to change the location.
 
-Per Command
------------
+Per command
+"""""""""""
 
-If you do not have bash 4.2, you must register each script independently
+If you do not have bash 4.2, you must register each script independently.
 
 .. code-block:: bash
 
@@ -513,17 +593,17 @@ If you do not have bash 4.2, you must register each script independently
     $ eval $(register-python-argcomplete ansible-pull)
     $ eval $(register-python-argcomplete ansible-vault)
 
-It would be advisable to place the above commands, into your shells profile file such as ``~/.profile`` or ``~/.bash_profile``.
+You should place the above commands into your shells profile file such as ``~/.profile`` or ``~/.bash_profile``.
 
-Zsh or tcsh
------------
+``argcomplete`` with zsh or tcsh
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-See the `argcomplete documentation <https://argcomplete.readthedocs.io/en/latest/>_`.
+See the `argcomplete documentation <https://argcomplete.readthedocs.io/en/latest/>`_.
 
 .. _getting_ansible:
 
-Ansible on GitHub
-`````````````````
+``ansible-base`` on GitHub
+---------------------------
 
 You may also wish to follow the `GitHub project <https://github.com/ansible/ansible>`_ if
 you have a GitHub account. This is also where we keep the issue tracker for sharing
